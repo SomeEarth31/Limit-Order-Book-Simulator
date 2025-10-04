@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOB Intensity Simulator - Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LOB Intensity Simulator - Results</h1>
+            <nav>
+                <a href="/">← Back to Upload</a>
+            </nav>
+        </header>
+
+        <div class="results-content">
+            <div id="loadingMessage">Loading results...</div>
+            <div id="resultsContent" style="display: none;">
+                <div class="results-section">
+                    <h2>Model Parameters</h2>
+                    <div id="modelParameters"></div>
+                </div>
+
+                <div class="results-section">
+                    <h2>Data Summary</h2>
+                    <div id="dataSummary"></div>
+                </div>
+
+                <div class="results-section">
+                    <h2>Downloads</h2>
+                    <div class="download-buttons">
+                        <a href="/download/parameters" class="btn-primary">Download Parameters (JSON)</a>
+                        <a href="/download/sample_data" class="btn-secondary">Download Sample Data (CSV)</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/results');
+                const results = await response.json();
+                
+                if (results.error) {
+                    document.getElementById('loadingMessage').textContent = results.error;
+                    return;
+                }
+                
+                displayResults(results);
+                document.getElementById('loadingMessage').style.display = 'none';
+                document.getElementById('resultsContent').style.display = 'block';
+                
+            } catch (error) {
+                document.getElementById('loadingMessage').textContent = `Error loading results: ${error.message}`;
+            }
+        }
+
+        function displayResults(results) {
+            // Display model parameters
+            const paramsDiv = document.getElementById('modelParameters');
+            paramsDiv.innerHTML = `
+                <div class="param-grid">
+                    <div class="param-card">
+                        <h3>Market Order Intensity</h3>
+                        <div class="param-list">
+                            ${results.market_params.map((param, i) => 
+                                `<div class="param-item">
+                                    <span class="param-name">β${i}</span>
+                                    <span class="param-value">${param.toFixed(6)}</span>
+                                </div>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="param-card">
+                        <h3>Limit Order Intensity</h3>
+                        <div class="param-list">
+                            ${results.limit_params.map((param, i) => 
+                                `<div class="param-item">
+                                    <span class="param-name">β${i}</span>
+                                    <span class="param-value">${param.toFixed(6)}</span>
+                                </div>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="param-card">
+                        <h3>Ask Placement Model</h3>
+                        <div class="param-list">
+                            <div class="param-item">
+                                <span class="param-name">Weights</span>
+                                <span class="param-value">[${results.ask_placement_params.weights.map(w => w.toFixed(3)).join(', ')}]</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-name">Means</span>
+                                <span class="param-value">[${results.ask_placement_params.means.map(m => m.toFixed(3)).join(', ')}]</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-name">Std Devs</span>
+                                <span class="param-value">[${results.ask_placement_params.std_devs.map(s => s.toFixed(3)).join(', ')}]</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="param-card">
+                        <h3>Bid Placement Model</h3>
+                        <div class="param-list">
+                            <div class="param-item">
+                                <span class="param-name">Weights</span>
+                                <span class="param-value">[${results.bid_placement_params.weights.map(w => w.toFixed(3)).join(', ')}]</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-name">Means</span>
+                                <span class="param-value">[${results.bid_placement_params.means.map(m => m.toFixed(3)).join(', ')}]</span>
+                            </div>
+                            <div class="param-item">
+                                <span class="param-name">Std Devs</span>
+                                <span class="param-value">[${results.bid_placement_params.std_devs.map(s => s.toFixed(3)).join(', ')}]</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Display data summary
+            const summaryDiv = document.getElementById('dataSummary');
+            summaryDiv.innerHTML = `
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Total Events</span>
+                        <span class="summary-value">${results.data_summary.n_events}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Covariate Points</span>
+                        <span class="summary-value">${results.data_summary.n_covariates}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Time Range</span>
+                        <span class="summary-value">${results.data_summary.time_range[0].toFixed(2)} - ${results.data_summary.time_range[1].toFixed(2)}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Fitted At</span>
+                        <span class="summary-value">${new Date(results.upload_time).toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <div class="event-breakdown">
+                    <h3>Event Type Distribution</h3>
+                    <div class="event-stats">
+                        ${Object.entries(results.data_summary.event_types).map(([type, count]) => 
+                            `<div class="event-stat">
+                                <span class="event-type">${type}</span>
+                                <span class="event-count">${count}</span>
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load results when page loads
+        loadResults();
+    </script>
+</body>
+</html>

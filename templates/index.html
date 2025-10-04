@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOB Intensity Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LOB Intensity Simulator</h1>
+            <p>Based on Toke & Yoshida (2016) - Limit Order Book Intensity Models</p>
+        </header>
+
+        <div class="upload-section">
+            <h2>Upload CSV Files</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="file-input-group">
+                    <label for="events_file">Events CSV:</label>
+                    <input type="file" id="events_file" name="events_file" accept=".csv" required>
+                    <small>Columns: time, event_type, price, side</small>
+                </div>
+                
+                <div class="file-input-group">
+                    <label for="covariates_file">Covariates CSV:</label>
+                    <input type="file" id="covariates_file" name="covariates_file" accept=".csv" required>
+                    <small>Columns: time, S, q1, Q10</small>
+                </div>
+                
+                <button type="submit" id="uploadBtn">Upload & Fit Models</button>
+            </form>
+            
+            <div class="download-section">
+                <h3>Download Sample Data</h3>
+                <a href="/download/sample_data" class="btn-secondary">Download Sample CSV Files</a>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <h2>Model Parameters</h2>
+            <div id="modelParams"></div>
+            
+            <h2>Simulation</h2>
+            <div class="simulation-controls">
+                <label for="simTime">Simulation Time (seconds):</label>
+                <input type="number" id="simTime" value="100" min="1" max="3600">
+                
+                <label for="initPrice">Initial Price:</label>
+                <input type="number" id="initPrice" value="100" step="0.01">
+                
+                <button id="simulateBtn">Run Simulation</button>
+            </div>
+            
+            <div id="simulationResults"></div>
+        </div>
+
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        let currentResults = null;
+
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('events_file', document.getElementById('events_file').files[0]);
+            formData.append('covariates_file', document.getElementById('covariates_file').files[0]);
+            
+            showStatus('Uploading files and fitting models...', 'info');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentResults = result.results;
+                    displayResults(result.results);
+                    showStatus('Models fitted successfully!', 'success');
+                } else {
+                    showStatus(`Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('simulateBtn').addEventListener('click', async function() {
+            if (!currentResults) {
+                showStatus('Please upload files and fit models first', 'error');
+                return;
+            }
+            
+            const simTime = document.getElementById('simTime').value;
+            const initPrice = document.getElementById('initPrice').value;
+            
+            showStatus('Running simulation...', 'info');
+            
+            try {
+                const response = await fetch('/simulate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        simulation_time: simTime,
+                        initial_price: initPrice
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displaySimulationResults(result.simulation_results);
+                    showStatus('Simulation completed!', 'success');
+                } else {
+                    showStatus(`Simulation error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        });
+
+        function displayResults(results) {
+            const paramsDiv = document.getElementById('modelParams');
+            
+            paramsDiv.innerHTML = `
+                <div class="param-group">
+                    <h3>Market Order Intensity Parameters (β)</h3>
+                    <div class="param-list">
+                        ${results.market_params.map((param, i) => 
+                            `<span>β${i}: ${param.toFixed(6)}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+                
+                <div class="param-group">
+                    <h3>Limit Order Intensity Parameters (β)</h3>
+                    <div class="param-list">
+                        ${results.limit_params.map((param, i) => 
+                            `<span>β${i}: ${param.toFixed(6)}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+                
+                <div class="param-group">
+                    <h3>Data Summary</h3>
+                    <div class="summary-stats">
+                        <p>Events: ${results.data_summary.n_events}</p>
+                        <p>Covariates: ${results.data_summary.n_covariates}</p>
+                        <p>Time Range: ${results.data_summary.time_range[0].toFixed(2)} - ${results.data_summary.time_range[1].toFixed(2)}</p>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('resultsSection').style.display = 'block';
+        }
+
+        function displaySimulationResults(results) {
+            const resultsDiv = document.getElementById('simulationResults');
+            
+            resultsDiv.innerHTML = `
+                <div class="simulation-summary">
+                    <h3>Simulation Summary</h3>
+                    <p>Total Events: ${results.n_events}</p>
+                    <p>Simulation Time: ${results.simulation_time} seconds</p>
+                    <div class="event-breakdown">
+                        ${Object.entries(results.event_counts).map(([type, count]) => 
+                            `<span>${type}: ${count}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+                
+                <div class="charts">
+                    <canvas id="eventsChart" width="400" height="200"></canvas>
+                </div>
+            `;
+            
+            // Create events timeline chart
+            const ctx = document.getElementById('eventsChart').getContext('2d');
+            const events = results.simulated_events;
+            
+            // Group events by time intervals
+            const timeIntervals = {};
+            events.forEach(event => {
+                const interval = Math.floor(event.time / 10) * 10; // 10-second intervals
+                if (!timeIntervals[interval]) {
+                    timeIntervals[interval] = {market: 0, limit: 0, cancel: 0};
+                }
+                timeIntervals[interval][event.event_type]++;
+            });
+            
+            const labels = Object.keys(timeIntervals).sort((a, b) => a - b);
+            const marketData = labels.map(label => timeIntervals[label].market);
+            const limitData = labels.map(label => timeIntervals[label].limit);
+            const cancelData = labels.map(label => timeIntervals[label].cancel);
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Market Orders',
+                            data: marketData,
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Limit Orders',
+                            data: limitData,
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Cancellations',
+                            data: cancelData,
+                            borderColor: 'rgb(255, 205, 86)',
+                            backgroundColor: 'rgba(255, 205, 86, 0.2)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Events'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time (seconds)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    statusDiv.className = 'status';
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>

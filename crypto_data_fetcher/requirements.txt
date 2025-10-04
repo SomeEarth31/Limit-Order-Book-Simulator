@@ -1,0 +1,8 @@
+# Crypto Data Fetcher Dependencies
+ccxt>=4.0.0
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Optional: for enhanced functionality
+requests>=2.25.0
+websocket-client>=1.0.0
