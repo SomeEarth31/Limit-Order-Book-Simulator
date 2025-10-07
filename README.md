@@ -1,6 +1,7 @@
 # LOB Intensity Simulator
 
 A comprehensive backtesting framework implementing the limit order book intensity models from **Toke & Yoshida (2016)** - "Modelling intensities of order flows in a limit order book".
+Forked from Muzaffar's repo, who was the team lead for the project. 
 
 ## 🎉 Latest Updates & Fixes
 
